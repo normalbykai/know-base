@@ -1,0 +1,123 @@
+# Senkey Knowledge
+
+企业知识库平台。当前交付第一阶段的文档基础设施：上传、对象存储、异步解析、标准化 `DocumentModel`、Markdown/JSON 预览、失败重试和版本记录。
+
+## 技术栈与版本
+
+### 前端
+
+| 框架 / 组件 | 当前版本或要求 | 用途 |
+|---|---|---|
+| React | 18.3 | 管理界面渲染 |
+| TypeScript | 5.6 | 前端类型检查 |
+| Vite | 5.4 | 本地开发服务器与生产构建 |
+| Ant Design | 5.22 | 企业后台 UI 组件 |
+
+### 后端
+
+| 框架 / 组件 | 当前版本或要求 | 用途 |
+|---|---|---|
+| Python | 3.11+（容器使用 3.12） | 文档服务运行时 |
+| FastAPI | 0.115+ | REST API 与 OpenAPI 文档 |
+| Uvicorn | 0.30+ | ASGI Web 服务器，用于运行 FastAPI 应用 |
+| SQLAlchemy | 2.x | PostgreSQL ORM |
+| Pydantic Settings | 2.x | `.env` 配置加载与校验 |
+| Alembic | 1.14+ | 数据库迁移与表结构版本管理 |
+| Dramatiq | 1.17+ | 文档解析异步 Worker |
+
+### 基础设施与文档解析
+
+| 组件 | 当前版本或要求 | 用途 |
+|---|---|---|
+| PostgreSQL | 16 | 文档、任务及版本元数据 |
+| Redis | 7 | Dramatiq 任务队列 |
+| MinIO | S3 兼容 | 原文件与解析产物存储 |
+| MinerU | 独立部署，按发行版确定 | PDF、OCR 与版面解析 |
+| Docker Compose | Compose v2 | 本地基础设施与完整链路编排 |
+
+> `uvicorn` 是 Web 服务器，不是 `uv`。`uv` 是可选的 Python 包与环境管理工具；本项目当前以 `.venv + pip` 管理本地 Python 环境，并由 Uvicorn 启动 FastAPI。
+
+精确的 Python 依赖范围定义在 [`knowledge-document-service/pyproject.toml`](knowledge-document-service/pyproject.toml)，前端依赖定义在 [`web/package.json`](web/package.json)。升级基础设施镜像或核心框架版本时，应同步验证上传、异步解析、重试和版本预览链路。
+
+## 目录
+
+- `knowledge-document-service/`：FastAPI 文档服务及 Dramatiq worker
+- `web/`：React + TypeScript + Vite 管理界面
+- `docs/architecture/`：已归档的架构设计稿
+- `docs/DEVELOPMENT.md`：本地运行、接口与开发规范
+
+## 开发启动
+
+日常开发不需要将整个项目放入 Docker。推荐只用 Docker 运行 PostgreSQL、Redis 和 MinIO，后端、Worker 与前端在本机启动，以获得热更新和便捷调试。
+
+### 1. 启动基础依赖
+
+在仓库根目录执行：
+
+```powershell
+docker compose up postgres redis minio
+```
+
+这会启动 PostgreSQL、Redis 和 MinIO。首次拉取镜像需要一些时间；保持该终端运行即可。
+
+### 2. 启动后端 API
+
+另开一个终端：
+
+```powershell
+cd knowledge-document-service
+Copy-Item .env.example .env
+if (!(Test-Path .venv)) { python -m venv .venv }
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+.\.venv\Scripts\python.exe -m alembic upgrade head
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
+```
+
+`--reload` 会在修改 Python 代码后自动重启 API。必须使用 `.venv` 中的 Python 启动，不能直接执行全局 `uvicorn`，否则可能缺少 `sqlalchemy` 等项目依赖。API 文档地址为 `http://localhost:8000/docs`。
+
+### 3. 启动异步解析 Worker
+
+再开一个终端，并激活同一个虚拟环境：
+
+```powershell
+cd knowledge-document-service
+.\.venv\Scripts\dramatiq.exe app.workers.parse_worker
+```
+
+Worker 负责消费 Redis 中的解析任务；没有它，上传和创建任务仍可成功，但任务不会进入解析状态。
+
+### 4. 启动前端
+
+再开一个终端：
+
+```powershell
+cd web
+npm install
+npm run dev
+```
+
+前端地址为 `http://localhost:5173`，MinIO 控制台为 `http://localhost:9001`。
+
+### MinerU 解析服务
+
+MinerU 是独立且较重的 GPU 解析服务。开发文档管理、状态机、API 或前端时不需要每次启动它；只有需要真实验证 PDF/OCR 解析时才需要配置它。
+
+MinerU 服务必须提供 `POST /parse` 的 multipart 文件接口。使用 Compose 联调时可启动 GPU profile：
+
+```powershell
+docker compose --profile gpu up --build
+```
+
+若 MinerU 未启动，任务会按预期标记为 `FAILED`，并可通过重试接口重新入队。
+
+### 完整容器联调
+
+如需验证完整容器化链路，可在仓库根目录执行：
+
+```powershell
+docker compose --profile gpu up --build
+```
+
+这会启动 API、Worker、PostgreSQL、Redis、MinIO 和 MinerU profile。实际 MinerU 镜像的启动参数与接口须以选定发行版为准。
+
+MinerU 作为独立解析服务接入。它尚未启用或不可达时，任务会标记为 `FAILED`，可经重试接口重新排队；这避免业务 API 与 GPU/模型进程耦合。
