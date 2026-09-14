@@ -50,4 +50,4 @@ npm run dev
 
 本机 API 在 `knowledge-document-service/` 下使用 `.\.venv\Scripts\python.exe -m app` 启动，通过该目录 `.env` 的 `API_PORT` 配置端口（默认 `8000`）。前端在 `web/.env` 中设置 `VITE_PORT`（默认 `5173`），然后执行 `npm run dev`。改端口后同步调整前端 `VITE_DOCUMENT_API` 和后端 `CORS_ORIGINS`，并重新启动服务。完整示例见 [README 的自定义端口说明](../README.md#自定义前后端端口)。
 
-默认解析器为 `deepseek_vision`。配置 `DEEPSEEK_API_KEY`、`DEEPSEEK_VISION_MODEL` 后，Worker 会将 PDF 分页渲染为图片并调用 OpenAI 兼容的视觉 API；不需要 GPU。Compose 运行时通过 PowerShell 环境变量传入 Key 和模型名，例如 `$env:DEEPSEEK_API_KEY="..."`、`$env:DEEPSEEK_VISION_MODEL="你的视觉模型名"`。MinerU 仍可按 profile 启动：`docker compose --profile gpu up --build`；设置 `DOCUMENT_PARSER=mineru` 后切换回本地解析。它使用容器内 `8000` 端口、宿主机 `8080` 映射，并调用官方 `POST /file_parse`。
+默认解析器为 `deepseek_vision`，对应 DeepSeek 官方 `deepseek-flash` 模型（路由至 DeepSeek-V4.1-Flash，支持 Vision）。配置 `DEEPSEEK_API_KEY` 后，Worker 会将 PDF 分页渲染为图片并调用 `https://api.deepseek.com/chat/completions`；不需要 GPU。Compose 运行时通过 PowerShell 环境变量传入 Key，例如 `$env:DEEPSEEK_API_KEY="..."`。MinerU 仍可按 profile 启动：`docker compose --profile gpu up --build`；设置 `DOCUMENT_PARSER=mineru` 后切换回本地解析。它使用容器内 `8000` 端口、宿主机 `8080` 映射，并调用官方 `POST /file_parse`。

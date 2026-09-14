@@ -23,10 +23,12 @@ class Settings(BaseSettings):
     minio_secure: bool = False
     minio_bucket: str = "documents"
     document_parser: str = "deepseek_vision"
-    deepseek_base_url: str = "https://api.deepseek.com/v1"
+    deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_api_key: str = ""
-    deepseek_vision_model: str = ""
+    # DeepSeek 官方以 deepseek-flash 作为 V4.1-Flash 的稳定模型别名，并支持 Vision。
+    deepseek_vision_model: str = "deepseek-flash"
     deepseek_max_pages: int = Field(default=30, ge=1, le=200)
+    deepseek_max_output_tokens: int = Field(default=8192, ge=256, le=32768)
     mineru_base_url: str = "http://localhost:8080"
     max_upload_bytes: int = 52_428_800
 

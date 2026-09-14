@@ -125,7 +125,7 @@ Docker Compose 的 API 容器内部仍监听 `8000`，宿主机端口可在仓�
 
 ### DeepSeek Vision 与 MinerU 解析服务
 
-默认解析器为云端 `DeepSeekVisionParser`：PDF 会在 Worker 中逐页转为图片，再通过 OpenAI 兼容的视觉接口请求 Markdown 和结构化 blocks。将 `DEEPSEEK_API_KEY`、`DEEPSEEK_VISION_MODEL` 设置在未提交的 `.env`（本地运行）或终端环境变量（Compose 运行）中；模型名必须是你的供应商实际提供的视觉模型名。
+默认解析器为云端 `DeepSeekVisionParser`：PDF 会在 Worker 中逐页转为图片，再通过 OpenAI 兼容的视觉接口请求 Markdown 和结构化 blocks。DeepSeek 官方模型名为 `deepseek-flash`，实际路由至支持 Vision 的 DeepSeek‑V4.1‑Flash。将 `DEEPSEEK_API_KEY` 设置在未提交的 `.env`（本地运行）或终端环境变量（Compose 运行）中。
 
 MinerU 仍作为可选的本地 GPU 备用解析服务保留。需要使用它时，把 `DOCUMENT_PARSER=mineru`，并使用 Compose GPU profile：
 

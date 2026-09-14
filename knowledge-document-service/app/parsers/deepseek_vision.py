@@ -39,6 +39,7 @@ class DeepSeekVisionParser(Parser):
                 mime_type=mime_type,
                 image=image,
                 page_number=page_number,
+                max_output_tokens=settings.deepseek_max_output_tokens,
             )
             markdown = page.get("markdown")
             if isinstance(markdown, str) and markdown.strip():
@@ -79,7 +80,7 @@ class DeepSeekVisionParser(Parser):
         raise RuntimeError("DeepSeek vision parsing currently supports PDF and image files only")
 
     @staticmethod
-    def _parse_page(base_url: str, api_key: str, model: str, mime_type: str, image: bytes, page_number: int) -> dict[str, Any]:
+    def _parse_page(base_url: str, api_key: str, model: str, mime_type: str, image: bytes, page_number: int, max_output_tokens: int = 8192) -> dict[str, Any]:
         """兼容 OpenAI 风格多模态接口；Key 仅置于 Authorization 头且不会写入任务错误。"""
         image_url = f"data:{mime_type};base64,{base64.b64encode(image).decode('ascii')}"
         payload = {
@@ -92,6 +93,9 @@ class DeepSeekVisionParser(Parser):
                 ]},
             ],
             "temperature": 0,
+            # 官方 JSON Output 可确保 Worker 无需猜测或修复模型生成的结构化结果。
+            "response_format": {"type": "json_object"},
+            "max_tokens": max_output_tokens,
         }
         try:
             response = httpx.post(

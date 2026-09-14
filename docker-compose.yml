@@ -36,8 +36,8 @@ services:
       MINIO_ENDPOINT: minio:9000
       DOCUMENT_PARSER: ${DOCUMENT_PARSER:-deepseek_vision}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
-      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com/v1}
-      DEEPSEEK_VISION_MODEL: ${DEEPSEEK_VISION_MODEL:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      DEEPSEEK_VISION_MODEL: ${DEEPSEEK_VISION_MODEL:-deepseek-flash}
       # 保留本地 MinerU 备用解析服务；当前默认路由使用 DeepSeek Vision。
       MINERU_BASE_URL: http://mineru:8000
     ports: ["${API_PORT:-8000}:8000"]
@@ -57,8 +57,8 @@ services:
       MINIO_ENDPOINT: minio:9000
       DOCUMENT_PARSER: ${DOCUMENT_PARSER:-deepseek_vision}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
-      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com/v1}
-      DEEPSEEK_VISION_MODEL: ${DEEPSEEK_VISION_MODEL:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      DEEPSEEK_VISION_MODEL: ${DEEPSEEK_VISION_MODEL:-deepseek-flash}
       MINERU_BASE_URL: http://mineru:8000
     volumes: [./knowledge-document-service:/app]
     depends_on:
