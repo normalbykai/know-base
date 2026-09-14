@@ -1,4 +1,4 @@
-import type { Document, ParseTask } from '../types/document'
+import type { Document, DocumentContent, ParseTask } from '../types/document'
 
 // 开发环境允许覆盖后端地址，生产环境由部署平台注入该变量。
 const API = import.meta.env.VITE_DOCUMENT_API ?? 'http://localhost:8000/api/v1'
@@ -16,3 +16,6 @@ export const getParseStatus = (id: string) => request<ParseTask>(`/documents/${i
 export const retryParse = (id: string) => request<ParseTask>(`/documents/${id}/retry`, { method: 'POST' })
 // Markdown 为纯文本响应，因此不能复用默认 JSON 请求函数。
 export const getMarkdown = async (id: string) => { const response = await fetch(`${API}/documents/${id}/markdown`); if (!response.ok) throw new Error(await response.text()); return response.text() }
+export const getContent = (id: string) => request<DocumentContent>(`/documents/${id}/content`)
+// 原始文件走浏览器原生预览，避免把大文件重复读入前端内存。
+export const getSourceUrl = (id: string) => `${API}/documents/${id}/source`

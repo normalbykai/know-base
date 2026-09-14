@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -10,6 +10,7 @@ from app.schemas.document import DocumentModel, DocumentOut, ParseTaskOut
 from app.services.document_service import DocumentService
 from app.services.storage_service import StorageService
 from app.workers.parse_worker import parse_document
+from urllib.parse import quote
 
 router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
 
@@ -44,6 +45,19 @@ def get_document(document_id: str, db: Session = Depends(get_db)):
     if not document:
         raise HTTPException(404, "Document not found")
     return document
+
+
+@router.get("/{document_id}/source")
+def source_document(document_id: str, db: Session = Depends(get_db)):
+    """以内联响应返回原始文件，供浏览器预览；对象存储路径不暴露给前端。"""
+    document = db.get(Document, document_id)
+    if not document:
+        raise HTTPException(404, "Document not found")
+    return Response(
+        StorageService().get_bytes(document.storage_path),
+        media_type=document.content_type or "application/octet-stream",
+        headers={"Content-Disposition": f"inline; filename*=UTF-8''{quote(document.filename)}"},
+    )
 
 
 @router.post("/{document_id}/parse", response_model=ParseTaskOut, status_code=status.HTTP_202_ACCEPTED)

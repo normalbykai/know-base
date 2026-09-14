@@ -1,32 +1,89 @@
 import { useEffect, useState } from 'react'
-import { Alert, Button, Card, Layout, Space, Table, Tag, Typography, Upload, message } from 'antd'
+import { Alert, Button, Card, Descriptions, Empty, Layout, Space, Spin, Table, Tabs, Tag, Typography, Upload, message } from 'antd'
 import type { UploadProps } from 'antd'
-import { getMarkdown, getParseStatus, listDocuments, parseDocument, retryParse, uploadDocument } from '../api/documents'
-import type { Document, ParseTask } from '../types/document'
+import { getContent, getMarkdown, getParseStatus, getSourceUrl, listDocuments, parseDocument, retryParse, uploadDocument } from '../api/documents'
+import type { Document, DocumentContent, ParseTask } from '../types/document'
 
 const color = (status: string) => ({ PARSED: 'green', FAILED: 'red', PARSING: 'blue', QUEUED: 'gold', UPLOADED: 'default' }[status] ?? 'default')
+const isProcessing = (status?: string) => status === 'QUEUED' || status === 'PARSING'
 
 export function DocumentsPage() {
-  // 当前详情与列表分离：上传或点击列表项后切换当前操作对象。
   const [document, setDocument] = useState<Document>()
   const [task, setTask] = useState<ParseTask>()
   const [markdown, setMarkdown] = useState('')
+  const [content, setContent] = useState<DocumentContent>()
   const [documents, setDocuments] = useState<Document[]>([])
-  // 页面首次进入加载文档；解析状态刷新由用户主动触发，避免无意义轮询。
-  const refreshDocuments = () => listDocuments().then(setDocuments).catch(() => message.error('无法获取文档列表'))
-  useEffect(() => { refreshDocuments() }, [])
-  // 返回 false 阻止 Upload 组件自行提交，确保请求走统一的业务 API。
+  const [loadingDetail, setLoadingDetail] = useState(false)
+
+  const refreshDocuments = async () => { try { setDocuments(await listDocuments()) } catch { message.error('无法获取文档列表') } }
+  const updateDocumentStatus = (id: string, status: string) => {
+    setDocuments(items => items.map(item => item.id === id ? { ...item, status } : item))
+    setDocument(item => item?.id === id ? { ...item, status } : item)
+  }
+  const loadParsedContent = async (id: string) => {
+    const [nextMarkdown, nextContent] = await Promise.all([getMarkdown(id), getContent(id)])
+    setMarkdown(nextMarkdown); setContent(nextContent)
+  }
+  const loadStatus = async (item: Document, silent = false) => {
+    try {
+      const next = await getParseStatus(item.id)
+      setTask(next); updateDocumentStatus(item.id, next.status)
+      if (next.status === 'PARSED') await loadParsedContent(item.id)
+    } catch (error) { if (!silent) message.error(`无法读取文档详情：${String(error)}`) }
+  }
+  const selectDocument = async (item: Document) => {
+    setDocument(item); setTask(undefined); setMarkdown(''); setContent(undefined)
+    if (item.status === 'UPLOADED') return
+    setLoadingDetail(true)
+    try { await loadStatus(item) } finally { setLoadingDetail(false) }
+  }
+  const refresh = async (silent = false) => { if (document) await loadStatus(document, silent) }
+
+  useEffect(() => { void refreshDocuments() }, [])
+  useEffect(() => {
+    if (!document || !isProcessing(task?.status ?? document.status)) return
+    const timer = window.setInterval(() => { void refresh(true) }, 2500)
+    return () => window.clearInterval(timer)
+  }, [document?.id, document?.status, task?.status])
+
   const action: UploadProps['beforeUpload'] = async file => {
-    try { const item = await uploadDocument(file); setDocument(item); setDocuments([item, ...documents]); setTask(undefined); setMarkdown(''); message.success('文件已上传') } catch (e) { message.error(String(e)) }
+    try { const item = await uploadDocument(file); setDocuments(items => [item, ...items]); await selectDocument(item); message.success('文件已上传，可开始解析') } catch (error) { message.error(String(error)) }
     return false
   }
-  const startParse = async () => { if (!document) return; try { setTask(await parseDocument(document.id)); message.success('解析任务已进入队列') } catch (e) { message.error(String(e)) } }
-  const refresh = async () => { if (!document) return; try { const next = await getParseStatus(document.id); setTask(next); if (next.status === 'PARSED') setMarkdown(await getMarkdown(document.id)) } catch (e) { message.error(String(e)) } }
-  const retry = async () => { if (!document) return; try { setTask(await retryParse(document.id)); setMarkdown('') } catch (e) { message.error(String(e)) } }
-  return <Layout style={{ minHeight: '100vh', background: '#f5f7fa' }}><Layout.Content style={{ maxWidth: 960, width: '100%', margin: '48px auto' }}>
-    <Typography.Title level={2}>知识库文档</Typography.Title><Typography.Paragraph>第一阶段：上传、异步解析与标准化预览。</Typography.Paragraph>
-    <Card title="上传文档"><Upload maxCount={1} beforeUpload={action} showUploadList={false}><Button>选择文件</Button></Upload>{document && <Space direction="vertical" style={{ marginTop: 20 }}><Typography.Text>{document.filename}</Typography.Text><Tag color={color(task?.status ?? document.status)}>{task?.status ?? document.status}</Tag><Space><Button type="primary" onClick={startParse} disabled={!!task}>开始解析</Button><Button onClick={refresh} disabled={!task}>刷新状态</Button>{task?.status === 'FAILED' && <Button danger onClick={retry}>重新解析</Button>}</Space>{task?.error_message && <Alert type="error" message="解析失败" description={task.error_message} />}</Space>}</Card>
-    <Card title="文档列表" style={{ marginTop: 24 }}><Table size="small" rowKey="id" dataSource={documents} pagination={false} columns={[{ title: '文件名', dataIndex: 'filename' }, { title: '状态', dataIndex: 'status', render: (value: string) => <Tag color={color(value)}>{value}</Tag> }, { title: '操作', render: (_, row: Document) => <Button type="link" onClick={() => { setDocument(row); setTask(undefined); setMarkdown('') }}>查看</Button> }]} /></Card>
-    {markdown && <Card title="Markdown 预览" style={{ marginTop: 24 }}><pre style={{ whiteSpace: 'pre-wrap' }}>{markdown}</pre></Card>}
+  const startParse = async () => {
+    if (!document) return
+    try { const next = await parseDocument(document.id); setTask(next); updateDocumentStatus(document.id, next.status); message.success('解析任务已进入队列，将自动刷新状态') } catch (error) { message.error(String(error)) }
+  }
+  const retry = async () => {
+    if (!document) return
+    try { const next = await retryParse(document.id); setTask(next); setMarkdown(''); setContent(undefined); updateDocumentStatus(document.id, next.status); message.success('已重新进入解析队列') } catch (error) { message.error(String(error)) }
+  }
+
+  const status = task?.status ?? document?.status ?? 'UPLOADED'
+  return <Layout style={{ minHeight: '100vh', background: '#f5f7fa' }}><Layout.Content style={{ maxWidth: 1180, width: '100%', margin: '40px auto', padding: '0 20px' }}>
+    <Typography.Title level={2} style={{ marginBottom: 4 }}>知识库文档</Typography.Title>
+    <Typography.Paragraph type="secondary">上传、异步解析、原文与结构化结果预览。</Typography.Paragraph>
+    <Card title="上传文档"><Upload maxCount={1} beforeUpload={action} showUploadList={false}><Button type="primary">选择文件并上传</Button></Upload></Card>
+    <Card title="文档列表" style={{ marginTop: 20 }}><Table size="middle" rowKey="id" dataSource={documents} pagination={{ pageSize: 8 }} rowClassName={row => row.id === document?.id ? 'ant-table-row-selected' : ''} columns={[
+      { title: '文件名', dataIndex: 'filename', ellipsis: true }, { title: '类型', dataIndex: 'content_type', width: 180, ellipsis: true },
+      { title: '状态', dataIndex: 'status', width: 120, render: (value: string) => <Tag color={color(value)}>{value}</Tag> },
+      { title: '操作', width: 100, render: (_, row: Document) => <Button type="link" onClick={() => void selectDocument(row)}>查看</Button> },
+    ]} /></Card>
+    <Card title="文档详情" style={{ marginTop: 20 }} extra={document && <Tag color={color(status)}>{status}</Tag>}>
+      {!document ? <Empty description="从文档列表选择一份文档查看详情" /> : <Spin spinning={loadingDetail}>
+        <Descriptions size="small" column={{ xs: 1, sm: 2 }} items={[
+          { key: 'filename', label: '文件名', children: document.filename }, { key: 'type', label: '文件类型', children: document.content_type },
+          { key: 'size', label: '文件大小', children: `${(document.file_size / 1024).toFixed(1)} KB` }, { key: 'retry', label: '重试次数', children: task?.retry_count ?? 0 },
+        ]} />
+        <Space style={{ marginTop: 16 }} wrap><Button type="primary" onClick={() => void startParse()} disabled={isProcessing(status) || status === 'PARSED'}>开始解析</Button><Button onClick={() => void refresh()} disabled={status === 'UPLOADED'}>刷新状态</Button>{status === 'FAILED' && <Button danger onClick={() => void retry()}>重新解析</Button>}</Space>
+        {isProcessing(status) && <Alert style={{ marginTop: 16 }} type="info" showIcon message="正在解析" description="页面会每 2.5 秒自动刷新一次解析状态。" />}
+        {task?.error_message && <Alert style={{ marginTop: 16 }} type="error" message="解析失败" description={task.error_message} />}
+        {status === 'PARSED' && <Tabs style={{ marginTop: 22 }} items={[
+          { key: 'source', label: '原始文件', children: <iframe title="原始文档预览" src={getSourceUrl(document.id)} style={{ width: '100%', height: 680, border: '1px solid #f0f0f0', borderRadius: 6 }} /> },
+          { key: 'markdown', label: 'Markdown 预览', children: markdown ? <pre style={{ maxHeight: 680, overflow: 'auto', margin: 0, padding: 18, whiteSpace: 'pre-wrap', background: '#fafafa', borderRadius: 6 }}>{markdown}</pre> : <Empty description="正在加载 Markdown" /> },
+          { key: 'structure', label: `结构化内容 (${content?.blocks.length ?? 0})`, children: content ? <pre style={{ maxHeight: 680, overflow: 'auto', margin: 0, padding: 18, background: '#fafafa', borderRadius: 6 }}>{JSON.stringify(content, null, 2)}</pre> : <Empty description="正在加载结构化内容" /> },
+        ]} />}
+      </Spin>}
+    </Card>
   </Layout.Content></Layout>
 }
