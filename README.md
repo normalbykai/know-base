@@ -123,17 +123,17 @@ VITE_DOCUMENT_API=http://localhost:8100/api/v1
 
 Docker Compose 的 API 容器内部仍监听 `8000`，宿主机端口可在仓库根目录 `.env` 设置 `API_PORT=8100`，或在执行 Compose 前设置 `$env:API_PORT="8100"`。Compose 默认加载后端 `.env.example`，自定义前端端口时可在 `document-api.environment` 中设置 `CORS_ORIGINS: '["http://localhost:5200"]'`。
 
-### MinerU 解析服务
+### DeepSeek Vision 与 MinerU 解析服务
 
-MinerU 是独立且较重的 GPU 解析服务。开发文档管理、状态机、API 或前端时不需要每次启动它；只有需要真实验证 PDF/OCR 解析时才需要配置它。
+默认解析器为云端 `DeepSeekVisionParser`：PDF 会在 Worker 中逐页转为图片，再通过 OpenAI 兼容的视觉接口请求 Markdown 和结构化 blocks。将 `DEEPSEEK_API_KEY`、`DEEPSEEK_VISION_MODEL` 设置在未提交的 `.env`（本地运行）或终端环境变量（Compose 运行）中；模型名必须是你的供应商实际提供的视觉模型名。
 
-项目使用 MinerU 官方 `mineru-api` 的 `POST /file_parse` multipart 接口，并在解析器适配层转换其响应。使用 Compose 联调时可启动 GPU profile：
+MinerU 仍作为可选的本地 GPU 备用解析服务保留。需要使用它时，把 `DOCUMENT_PARSER=mineru`，并使用 Compose GPU profile：
 
 ```powershell
 docker compose --profile gpu up --build
 ```
 
-若 MinerU 未启动，任务会按预期标记为 `FAILED`，并可通过重试接口重新入队。
+DeepSeek Key、模型名未设置，或云端接口不可用时，任务会按预期标记为 `FAILED`，并可通过重试接口重新入队。
 
 ### 完整容器联调
 
@@ -143,6 +143,6 @@ docker compose --profile gpu up --build
 docker compose --profile gpu up --build
 ```
 
-这会启动 API、Worker、PostgreSQL、Redis、MinIO 和 MinerU profile。首次构建会基于仓库内的 Dockerfile 下载 MinerU 3.4.5、GPU 基础镜像和模型，因此耗时及磁盘占用都会明显增加。
+这会启动 API、Worker、PostgreSQL、Redis、MinIO 和 MinerU profile。默认 DeepSeek 解析不要求启动这个 profile；首次构建 MinerU 时才会下载 GPU 基础镜像和模型，因此耗时及磁盘占用都会明显增加。
 
-MinerU 作为独立解析服务接入。它尚未启用或不可达时，任务会标记为 `FAILED`，可经重试接口重新排队；这避免业务 API 与 GPU/模型进程耦合。
+两种解析器都通过统一 `Parser` 接口接入。切换解析器不会影响上传、异步任务、标准化、版本和预览流程。

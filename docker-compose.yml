@@ -34,7 +34,11 @@ services:
       DATABASE_URL: postgresql+psycopg://knowledge:knowledge@postgres:5432/knowledge
       REDIS_URL: redis://redis:6379/0
       MINIO_ENDPOINT: minio:9000
-      # 容器间通信使用 MinerU API 的容器端口；8080 仅用于宿主机访问。
+      DOCUMENT_PARSER: ${DOCUMENT_PARSER:-deepseek_vision}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com/v1}
+      DEEPSEEK_VISION_MODEL: ${DEEPSEEK_VISION_MODEL:-}
+      # 保留本地 MinerU 备用解析服务；当前默认路由使用 DeepSeek Vision。
       MINERU_BASE_URL: http://mineru:8000
     ports: ["${API_PORT:-8000}:8000"]
     volumes: [./knowledge-document-service:/app]
@@ -51,6 +55,10 @@ services:
       DATABASE_URL: postgresql+psycopg://knowledge:knowledge@postgres:5432/knowledge
       REDIS_URL: redis://redis:6379/0
       MINIO_ENDPOINT: minio:9000
+      DOCUMENT_PARSER: ${DOCUMENT_PARSER:-deepseek_vision}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com/v1}
+      DEEPSEEK_VISION_MODEL: ${DEEPSEEK_VISION_MODEL:-}
       MINERU_BASE_URL: http://mineru:8000
     volumes: [./knowledge-document-service:/app]
     depends_on:
@@ -58,9 +66,7 @@ services:
       redis: { condition: service_started }
       minio: { condition: service_started }
 
-  # Enable with: docker compose --profile gpu up --build
-  # MinerU does not publish opendatalab/mineru on Docker Hub. The local
-  # Dockerfile follows the official deployment recipe with a pinned release.
+  # 本地 GPU 备用解析服务。默认路由虽使用 DeepSeek Vision，仍可随时切回 MinerU。
   mineru:
     image: senkey-mineru:3.4.5
     build:

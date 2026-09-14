@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     minio_secret_key: str = "minioadmin"
     minio_secure: bool = False
     minio_bucket: str = "documents"
+    document_parser: str = "deepseek_vision"
+    deepseek_base_url: str = "https://api.deepseek.com/v1"
+    deepseek_api_key: str = ""
+    deepseek_vision_model: str = ""
+    deepseek_max_pages: int = Field(default=30, ge=1, le=200)
     mineru_base_url: str = "http://localhost:8080"
     max_upload_bytes: int = 52_428_800
 

@@ -50,4 +50,4 @@ npm run dev
 
 本机 API 在 `knowledge-document-service/` 下使用 `.\.venv\Scripts\python.exe -m app` 启动，通过该目录 `.env` 的 `API_PORT` 配置端口（默认 `8000`）。前端在 `web/.env` 中设置 `VITE_PORT`（默认 `5173`），然后执行 `npm run dev`。改端口后同步调整前端 `VITE_DOCUMENT_API` 和后端 `CORS_ORIGINS`，并重新启动服务。完整示例见 [README 的自定义端口说明](../README.md#自定义前后端端口)。
 
-默认 Compose 启动业务依赖。MinerU 需要 GPU，并按 profile 单独启动：`docker compose --profile gpu up --build`。Compose 使用仓库内基于 MinerU 3.4.5 官方配方的 Dockerfile 构建镜像，启动其 `mineru-api` 服务；容器内端口为 `8000`，宿主机映射为 `8080`。首次构建会下载 GPU 基础镜像和 MinerU 模型，耗时较长。解析器调用官方 `POST /file_parse`，并将其 `md_content` 和 `content_list` 转换为项目的统一输出。启动后可通过 `http://localhost:8080/health` 确认服务就绪。
+默认解析器为 `deepseek_vision`。配置 `DEEPSEEK_API_KEY`、`DEEPSEEK_VISION_MODEL` 后，Worker 会将 PDF 分页渲染为图片并调用 OpenAI 兼容的视觉 API；不需要 GPU。Compose 运行时通过 PowerShell 环境变量传入 Key 和模型名，例如 `$env:DEEPSEEK_API_KEY="..."`、`$env:DEEPSEEK_VISION_MODEL="你的视觉模型名"`。MinerU 仍可按 profile 启动：`docker compose --profile gpu up --build`；设置 `DOCUMENT_PARSER=mineru` 后切换回本地解析。它使用容器内 `8000` 端口、宿主机 `8080` 映射，并调用官方 `POST /file_parse`。
