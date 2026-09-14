@@ -50,4 +50,4 @@ npm run dev
 
 本机 API 在 `knowledge-document-service/` 下使用 `.\.venv\Scripts\python.exe -m app` 启动，通过该目录 `.env` 的 `API_PORT` 配置端口（默认 `8000`）。前端在 `web/.env` 中设置 `VITE_PORT`（默认 `5173`），然后执行 `npm run dev`。改端口后同步调整前端 `VITE_DOCUMENT_API` 和后端 `CORS_ORIGINS`，并重新启动服务。完整示例见 [README 的自定义端口说明](../README.md#自定义前后端端口)。
 
-默认 Compose 启动业务依赖。MinerU 需要 GPU，并按 profile 单独启动：`docker compose --profile gpu up --build`。部署前请确认所选 MinerU 镜像/适配器在 `http://mineru:8080/parse` 接受 multipart `file` 并返回 `markdown`、可选 `blocks`/`content_list` 和 `parser_version`；不同 MinerU 发布版的服务启动命令可能不同，因此该契约被隔离在 `MinerUParser` 中。
+默认 Compose 启动业务依赖。MinerU 需要 GPU，并按 profile 单独启动：`docker compose --profile gpu up --build`。Compose 使用仓库内基于 MinerU 3.4.5 官方配方的 Dockerfile 构建镜像，启动其 `mineru-api` 服务；容器内端口为 `8000`，宿主机映射为 `8080`。首次构建会下载 GPU 基础镜像和 MinerU 模型，耗时较长。解析器调用官方 `POST /file_parse`，并将其 `md_content` 和 `content_list` 转换为项目的统一输出。启动后可通过 `http://localhost:8080/health` 确认服务就绪。

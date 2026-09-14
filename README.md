@@ -127,7 +127,7 @@ Docker Compose 的 API 容器内部仍监听 `8000`，宿主机端口可在仓�
 
 MinerU 是独立且较重的 GPU 解析服务。开发文档管理、状态机、API 或前端时不需要每次启动它；只有需要真实验证 PDF/OCR 解析时才需要配置它。
 
-MinerU 服务必须提供 `POST /parse` 的 multipart 文件接口。使用 Compose 联调时可启动 GPU profile：
+项目使用 MinerU 官方 `mineru-api` 的 `POST /file_parse` multipart 接口，并在解析器适配层转换其响应。使用 Compose 联调时可启动 GPU profile：
 
 ```powershell
 docker compose --profile gpu up --build
@@ -143,6 +143,6 @@ docker compose --profile gpu up --build
 docker compose --profile gpu up --build
 ```
 
-这会启动 API、Worker、PostgreSQL、Redis、MinIO 和 MinerU profile。实际 MinerU 镜像的启动参数与接口须以选定发行版为准。
+这会启动 API、Worker、PostgreSQL、Redis、MinIO 和 MinerU profile。首次构建会基于仓库内的 Dockerfile 下载 MinerU 3.4.5、GPU 基础镜像和模型，因此耗时及磁盘占用都会明显增加。
 
 MinerU 作为独立解析服务接入。它尚未启用或不可达时，任务会标记为 `FAILED`，可经重试接口重新排队；这避免业务 API 与 GPU/模型进程耦合。
