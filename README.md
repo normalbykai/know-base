@@ -66,14 +66,14 @@ docker compose up postgres redis minio
 
 ```powershell
 cd knowledge-document-service
-Copy-Item .env.example .env
+if (!(Test-Path .env)) { Copy-Item .env.example .env }
 if (!(Test-Path .venv)) { python -m venv .venv }
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
 .\.venv\Scripts\python.exe -m alembic upgrade head
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
+.\.venv\Scripts\python.exe -m app
 ```
 
-`--reload` 会在修改 Python 代码后自动重启 API。必须使用 `.venv` 中的 Python 启动，不能直接执行全局 `uvicorn`，否则可能缺少 `sqlalchemy` 等项目依赖。API 文档地址为 `http://localhost:8000/docs`。
+启动入口读取当前目录的 `.env`，默认端口为 `8000`，`API_RELOAD=true` 会在修改 Python 代码后自动重启 API。必须使用 `.venv` 中的 Python 启动，否则可能缺少 `sqlalchemy` 等项目依赖。默认 API 文档地址为 `http://localhost:8000/docs`。
 
 ### 3. 启动异步解析 Worker
 
@@ -92,11 +92,36 @@ Worker 负责消费 Redis 中的解析任务；没有它，上传和创建任务
 
 ```powershell
 cd web
+if (!(Test-Path .env)) { Copy-Item .env.example .env }
 npm install
 npm run dev
 ```
 
 前端地址为 `http://localhost:5173`，MinIO 控制台为 `http://localhost:9001`。
+
+### 自定义前后端端口
+
+例如后端使用 `8100`、前端使用 `5200`，修改以下配置后，分别重新执行上面的后端和前端启动命令。
+
+`knowledge-document-service/.env`：
+
+```dotenv
+API_HOST=127.0.0.1
+API_PORT=8100
+API_RELOAD=true
+CORS_ORIGINS=["http://localhost:5200"]
+```
+
+`web/.env`：
+
+```dotenv
+VITE_PORT=5200
+VITE_DOCUMENT_API=http://localhost:8100/api/v1
+```
+
+此时前端访问 `http://localhost:5200`，API 文档访问 `http://localhost:8100/docs`。`CORS_ORIGINS` 使用 JSON 数组；如果通过 `127.0.0.1` 访问前端，也需添加对应来源（例如 `http://127.0.0.1:5200`）。端口范围为 `1–65535`；前端端口被占用时会报错，不会自动切换。系统环境变量优先于 `.env`。后端必须通过 `python -m app` 启动才会使用 `API_HOST`、`API_PORT` 和 `API_RELOAD`。
+
+Docker Compose 的 API 容器内部仍监听 `8000`，宿主机端口可在仓库根目录 `.env` 设置 `API_PORT=8100`，或在执行 Compose 前设置 `$env:API_PORT="8100"`。Compose 默认加载后端 `.env.example`，自定义前端端口时可在 `document-api.environment` 中设置 `CORS_ORIGINS: '["http://localhost:5200"]'`。
 
 ### MinerU 解析服务
 

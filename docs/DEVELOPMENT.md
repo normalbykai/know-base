@@ -48,4 +48,6 @@ npm run dev
 
 服务 API：`http://localhost:8000/docs`。前端开发服务器：`http://localhost:5173`。
 
+本机 API 在 `knowledge-document-service/` 下使用 `.\.venv\Scripts\python.exe -m app` 启动，通过该目录 `.env` 的 `API_PORT` 配置端口（默认 `8000`）。前端在 `web/.env` 中设置 `VITE_PORT`（默认 `5173`），然后执行 `npm run dev`。改端口后同步调整前端 `VITE_DOCUMENT_API` 和后端 `CORS_ORIGINS`，并重新启动服务。完整示例见 [README 的自定义端口说明](../README.md#自定义前后端端口)。
+
 默认 Compose 启动业务依赖。MinerU 需要 GPU，并按 profile 单独启动：`docker compose --profile gpu up --build`。部署前请确认所选 MinerU 镜像/适配器在 `http://mineru:8080/parse` 接受 multipart `file` 并返回 `markdown`、可选 `blocks`/`content_list` 和 `parser_version`；不同 MinerU 发布版的服务启动命令可能不同，因此该契约被隔离在 `MinerUParser` 中。

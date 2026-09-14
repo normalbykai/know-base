@@ -1,11 +1,16 @@
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     """集中读取运行配置；环境变量是唯一的生产配置来源。"""
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    api_host: str = "127.0.0.1"
+    api_port: int = Field(default=8000, ge=1, le=65535)
+    api_reload: bool = True
+    cors_origins: list[str] = ["http://localhost:5173"]
     database_url: str = "sqlite:///./knowledge.db"
     redis_url: str = "redis://localhost:6379/0"
     minio_endpoint: str = "localhost:9000"
