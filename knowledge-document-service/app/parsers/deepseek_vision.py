@@ -93,6 +93,8 @@ class DeepSeekVisionParser(Parser):
                 ]},
             ],
             "temperature": 0,
+            # 文档转写是确定性提取任务；关闭默认高强度思考，避免推理 token 挤占结构化输出额度。
+            "thinking": {"type": "disabled"},
             # 官方 JSON Output 可确保 Worker 无需猜测或修复模型生成的结构化结果。
             "response_format": {"type": "json_object"},
             "max_tokens": max_output_tokens,

@@ -19,4 +19,6 @@ def test_deepseek_vision_parser_sends_openai_compatible_image_request(monkeypatc
     assert captured["url"] == "https://example.test/v1/chat/completions"
     assert captured["headers"]["Authorization"] == "Bearer secret"
     assert captured["json"]["model"] == "vision-model"
+    assert captured["json"]["thinking"] == {"type": "disabled"}
+    assert captured["json"]["response_format"] == {"type": "json_object"}
     assert parsed["blocks"][0]["text"] == "正文"
