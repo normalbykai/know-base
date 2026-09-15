@@ -31,3 +31,8 @@ class StorageService:
         finally:
             response.close()
             response.release_conn()
+
+    def delete_prefix(self, prefix: str) -> None:
+        """删除文档私有前缀下的所有对象；前缀只由后端 UUID 生成。"""
+        for item in self.client.list_objects(self.bucket, prefix=prefix, recursive=True):
+            self.client.remove_object(self.bucket, item.object_name)

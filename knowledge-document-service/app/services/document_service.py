@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.models.document import Document, DocumentStatus, DocumentVersion
@@ -46,6 +46,18 @@ class DocumentService:
     def latest_task(self, document_id: str) -> ParseTask | None:
         """返回最新任务，供前端轮询解析状态。"""
         return self.db.scalar(select(ParseTask).where(ParseTask.document_id == document_id).order_by(ParseTask.created_at.desc()))
+
+    def delete_document(self, document: Document) -> None:
+        """删除文档的三层对象与关联元数据；解析中的文档禁止删除以避免 Worker 竞争。"""
+        if document.status in {DocumentStatus.QUEUED, DocumentStatus.PARSING}:
+            raise ValueError("正在处理的文档不能删除，请等待任务结束后再试")
+        # 对象路径仅以服务端 UUID 构造，不依赖用户输入的文件名。
+        for prefix in (f"raw/{document.id}/", f"parsed/{document.id}/", f"normalized/{document.id}/"):
+            self.storage.delete_prefix(prefix)
+        self.db.execute(delete(ParseTask).where(ParseTask.document_id == document.id))
+        self.db.execute(delete(DocumentVersion).where(DocumentVersion.document_id == document.id))
+        self.db.delete(document)
+        self.db.commit()
 
     def save_result(self, document: Document, task: ParseTask, raw_json: bytes, markdown: bytes, normalized_json: bytes, parser: str, parser_version: str | None) -> None:
         """保存三层产物并创建不可变版本；锁定任务避免覆盖超时恢复的状态。"""

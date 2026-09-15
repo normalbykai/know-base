@@ -1,4 +1,4 @@
-import type { Document, DocumentContent, DocumentVersion, ParseTask } from '../types/document'
+import type { BatchOperation, Document, DocumentContent, DocumentPage, DocumentVersion, ParseTask } from '../types/document'
 
 // 开发环境允许覆盖后端地址，生产环境由部署平台注入该变量。
 const API = import.meta.env.VITE_DOCUMENT_API ?? 'http://localhost:8000/api/v1'
@@ -6,14 +6,25 @@ const API = import.meta.env.VITE_DOCUMENT_API ?? 'http://localhost:8000/api/v1'
 const request = async <T,>(path: string, init?: RequestInit): Promise<T> => {
   const response = await fetch(`${API}${path}`, init)
   if (!response.ok) throw new Error(await response.text())
+  if (response.status === 204) return undefined as T
   return response.json() as Promise<T>
 }
 // 上传只创建文档；解析必须由用户显式触发，符合异步状态机设计。
 export const uploadDocument = (file: File) => { const data = new FormData(); data.append('file', file); return request<Document>('/documents', { method: 'POST', body: data }) }
-export const listDocuments = () => request<Document[]>('/documents')
+export const listDocuments = (params: { page: number; pageSize: number; keyword?: string; status?: string }) => {
+  const query = new URLSearchParams({ page: String(params.page), page_size: String(params.pageSize) })
+  if (params.keyword) query.set('keyword', params.keyword)
+  if (params.status) query.set('status', params.status)
+  return request<DocumentPage>(`/documents?${query}`)
+}
 export const parseDocument = (id: string) => request<ParseTask>(`/documents/${id}/parse`, { method: 'POST' })
 export const getParseStatus = (id: string) => request<ParseTask>(`/documents/${id}/parse-status`)
+export const listParseTasks = (id: string) => request<ParseTask[]>(`/documents/${id}/tasks`)
 export const retryParse = (id: string) => request<ParseTask>(`/documents/${id}/retry`, { method: 'POST' })
+export const batchParse = (document_ids: string[]) => request<BatchOperation>('/documents/batch/parse', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ document_ids }) })
+export const batchRetry = (document_ids: string[]) => request<BatchOperation>('/documents/batch/retry', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ document_ids }) })
+export const deleteDocument = (id: string) => request<void>(`/documents/${id}`, { method: 'DELETE' })
+export const batchDelete = (document_ids: string[]) => request<BatchOperation>('/documents/batch', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ document_ids }) })
 // Markdown 为纯文本响应，因此不能复用默认 JSON 请求函数。
 export const listVersions = (id: string) => request<DocumentVersion[]>(`/documents/${id}/versions`)
 export const getMarkdown = async (id: string, version?: number) => { const query = version ? `?version=${version}` : ''; const response = await fetch(`${API}/documents/${id}/markdown${query}`); if (!response.ok) throw new Error(await response.text()); return response.text() }
