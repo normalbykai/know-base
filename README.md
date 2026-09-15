@@ -86,6 +86,15 @@ cd knowledge-document-service
 
 Worker 负责消费 Redis 中的解析任务；没有它，上传和创建任务仍可成功，但任务不会进入解析状态。
 
+Compose 完整启动时还会运行 `document-task-recovery`。它每分钟扫描一次，默认会将执行超过 90 分钟的 `PARSING` 任务标为 `FAILED/TASK_TIMEOUT`，用户可在页面中重新解析。直连本地运行时可另开终端启动：
+
+```powershell
+cd knowledge-document-service
+.\.venv\Scripts\python.exe -m app.workers.task_recovery
+```
+
+可通过 `.env` 的 `PARSE_TASK_TIMEOUT_SECONDS` 和 `TASK_RECOVERY_INTERVAL_SECONDS` 调整阈值与扫描频率。
+
 ### 4. 启动前端
 
 再开一个终端：

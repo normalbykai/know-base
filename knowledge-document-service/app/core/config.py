@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     deepseek_max_output_tokens: int = Field(default=8192, ge=256, le=32768)
     mineru_base_url: str = "http://localhost:8080"
     max_upload_bytes: int = 52_428_800
+    # 解析页数与外部服务响应时间差异很大，因此默认保守设置为 90 分钟。
+    parse_task_timeout_seconds: int = Field(default=5400, ge=60, le=86_400)
+    task_recovery_interval_seconds: int = Field(default=60, ge=10, le=3600)
 
 
 @lru_cache

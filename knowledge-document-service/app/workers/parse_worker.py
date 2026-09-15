@@ -3,13 +3,14 @@ from datetime import datetime, timezone
 
 import dramatiq
 from dramatiq.brokers.redis import RedisBroker
+from sqlalchemy import update
 
 from app.core.config import get_settings
 from app.core.database import SessionLocal
 from app.models.document import Document, DocumentStatus
 from app.models.parse_task import ParseTask
 from app.parsers.router import ParserRouter
-from app.services.document_service import DocumentService
+from app.services.document_service import DocumentService, TaskNoLongerActive
 from app.services.normalizer import DocumentNormalizer
 
 # worker 与 API 共用 Redis broker，API 只投递 ID，避免在消息中传输大文件。
@@ -36,15 +37,26 @@ def parse_document(task_id: str) -> None:
     db = SessionLocal()
     try:
         task = db.get(ParseTask, task_id)
-        if task is None or task.status != DocumentStatus.QUEUED:
+        if task is None:
+            return
+        # 条件更新是领取任务的唯一入口；重复消息只能由一个 Worker 成功领取。
+        started_at = datetime.now(timezone.utc)
+        claim = db.execute(
+            update(ParseTask)
+            .where(ParseTask.id == task_id, ParseTask.status == DocumentStatus.QUEUED)
+            .values(status=DocumentStatus.PARSING, started_at=started_at)
+        )
+        if claim.rowcount != 1:
             # 幂等保护：重复消息或被重试替代的旧任务无需再次处理。
+            db.rollback()
             return
         document = db.get(Document, task.document_id)
         if document is None:
+            db.rollback()
             return
-        task.status = document.status = DocumentStatus.PARSING
-        task.started_at = datetime.now(timezone.utc)
+        document.status = DocumentStatus.PARSING
         db.commit()
+        db.refresh(task)
         service = DocumentService(db)
         try:
             source = service.storage.get_bytes(document.storage_path)
@@ -52,6 +64,9 @@ def parse_document(task_id: str) -> None:
             parsed = parser.parse(document.filename, document.content_type, source)
             model = DocumentNormalizer().normalize(document.id, document.filename, document.content_type, parsed.raw_json, parsed.markdown)
             service.save_result(document, task, json.dumps(parsed.raw_json, ensure_ascii=False).encode(), parsed.markdown.encode(), model.model_dump_json().encode(), parser.name, parsed.parser_version)
+        except TaskNoLongerActive:
+            # 恢复器已提交超时终态；保留它的错误码和用户可读原因。
+            return
         except Exception as exc:
             # 任务失败不抛回 broker 自动重试，由用户明确执行重试并保留原因。
             task.status = document.status = DocumentStatus.FAILED
