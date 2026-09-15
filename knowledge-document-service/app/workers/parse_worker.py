@@ -16,6 +16,20 @@ from app.services.normalizer import DocumentNormalizer
 dramatiq.set_broker(RedisBroker(url=get_settings().redis_url))
 
 
+def error_code_for(exc: Exception) -> str:
+    """将常见可恢复失败归类，前端无需解析供应商的错误文本。"""
+    message = str(exc).lower()
+    if "not configured" in message:
+        return "PARSER_NOT_CONFIGURED"
+    if "currently supports" in message or "unsupported" in message:
+        return "UNSUPPORTED_FILE"
+    if "max_pages" in message or "pages;" in message:
+        return "DOCUMENT_LIMIT_EXCEEDED"
+    if "unavailable" in message or "request failed" in message or "http status" in message:
+        return "PARSER_UNAVAILABLE"
+    return "PARSE_FAILED"
+
+
 @dramatiq.actor(max_retries=0)
 def parse_document(task_id: str) -> None:
     """消费一个解析任务，负责状态迁移、解析、标准化和失败记录。"""
@@ -34,14 +48,14 @@ def parse_document(task_id: str) -> None:
         service = DocumentService(db)
         try:
             source = service.storage.get_bytes(document.storage_path)
-            parser = ParserRouter().resolve(document.content_type, document.filename)
+            parser = ParserRouter().resolve(document.content_type, document.filename, task.parser)
             parsed = parser.parse(document.filename, document.content_type, source)
             model = DocumentNormalizer().normalize(document.id, document.filename, document.content_type, parsed.raw_json, parsed.markdown)
             service.save_result(document, task, json.dumps(parsed.raw_json, ensure_ascii=False).encode(), parsed.markdown.encode(), model.model_dump_json().encode(), parser.name, parsed.parser_version)
         except Exception as exc:
             # 任务失败不抛回 broker 自动重试，由用户明确执行重试并保留原因。
             task.status = document.status = DocumentStatus.FAILED
-            task.error_code = "PARSE_FAILED"
+            task.error_code = error_code_for(exc)
             task.error_message = str(exc)[:4000]
             task.finished_at = datetime.now(timezone.utc)
             db.commit()

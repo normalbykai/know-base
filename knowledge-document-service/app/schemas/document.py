@@ -26,6 +26,18 @@ class ParseTaskOut(BaseModel):
     error_message: str | None = None
 
 
+class DocumentVersionOut(BaseModel):
+    """供管理端选择历史解析结果的只读版本元数据。"""
+    id: str
+    document_id: str
+    version: int
+    parser: str
+    parser_version: str | None = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class DocumentBlock(BaseModel):
     """跨解析器的最小内容块；后续 Chunk 引擎只依赖此结构。"""
     id: str

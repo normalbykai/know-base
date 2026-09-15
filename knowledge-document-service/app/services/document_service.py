@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.models.document import Document, DocumentStatus, DocumentVersion
 from app.models.parse_task import ParseTask
+from app.core.config import get_settings
 from app.services.storage_service import StorageService
 
 
@@ -30,7 +31,8 @@ class DocumentService:
         if document.status == DocumentStatus.PARSING:
             raise ValueError("Document is already being parsed")
         previous = self.db.scalar(select(ParseTask).where(ParseTask.document_id == document.id).order_by(ParseTask.created_at.desc()))
-        task = ParseTask(document_id=document.id, status=DocumentStatus.QUEUED, retry_count=(previous.retry_count + 1 if retry and previous else 0))
+        # 入队时固化解析器，避免环境变量变更后任务记录与实际执行器不一致。
+        task = ParseTask(document_id=document.id, status=DocumentStatus.QUEUED, parser=get_settings().document_parser.lower(), retry_count=(previous.retry_count + 1 if retry and previous else 0))
         document.status = DocumentStatus.QUEUED
         self.db.add(task)
         self.db.commit()

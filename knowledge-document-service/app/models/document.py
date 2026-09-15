@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text, func
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -35,7 +35,10 @@ class Document(Base):
 class DocumentVersion(Base):
     """一次成功解析对应一个不可变版本，允许安全升级或替换解析器。"""
     __tablename__ = "document_versions"
-    __table_args__ = {"comment": "文档成功解析后的不可变版本记录，保存标准化产物位置。"}
+    __table_args__ = (
+        UniqueConstraint("document_id", "version", name="uq_document_versions_document_id_version"),
+        {"comment": "文档成功解析后的不可变版本记录，保存标准化产物位置。"},
+    )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment="文档版本 UUID 主键。")
     document_id: Mapped[str] = mapped_column(ForeignKey("documents.id"), index=True, comment="关联的逻辑文档 UUID。")
     version: Mapped[int] = mapped_column(Integer, comment="同一文档内从 1 开始递增的解析版本号。")

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -6,13 +6,28 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.models.document import Document, DocumentStatus, DocumentVersion
-from app.schemas.document import DocumentModel, DocumentOut, ParseTaskOut
+from app.schemas.document import DocumentModel, DocumentOut, DocumentVersionOut, ParseTaskOut
 from app.services.document_service import DocumentService
 from app.services.storage_service import StorageService
 from app.workers.parse_worker import parse_document
 from urllib.parse import quote
 
 router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
+
+SUPPORTED_UPLOAD_TYPES = {
+    ".pdf": {"application/pdf"},
+    ".png": {"image/png"},
+    ".jpg": {"image/jpeg"},
+    ".jpeg": {"image/jpeg"},
+    ".webp": {"image/webp"},
+}
+
+
+def validate_upload(filename: str, content_type: str) -> None:
+    """限制为当前默认解析链路实际支持的格式，避免用户上传后才得到必然失败。"""
+    suffix = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if content_type not in SUPPORTED_UPLOAD_TYPES.get(f".{suffix}", set()):
+        raise HTTPException(415, "仅支持 PDF、PNG、JPG/JPEG 和 WEBP 格式的文件")
 
 
 def task_out(task) -> ParseTaskOut:
@@ -23,12 +38,15 @@ def task_out(task) -> ParseTaskOut:
 @router.post("", response_model=DocumentOut, status_code=status.HTTP_201_CREATED)
 async def upload_document(file: UploadFile = File(...), db: Session = Depends(get_db)):
     """接收文件并立即创建文档；不在 HTTP 请求内执行耗时解析。"""
+    filename = file.filename or "unnamed"
+    content_type = file.content_type or "application/octet-stream"
+    validate_upload(filename, content_type)
     data = await file.read()
     if not data:
         raise HTTPException(400, "Empty files cannot be uploaded")
     if len(data) > get_settings().max_upload_bytes:
         raise HTTPException(413, "File exceeds MAX_UPLOAD_BYTES")
-    document = DocumentService(db).create_document(file.filename or "unnamed", file.content_type or "application/octet-stream", data)
+    document = DocumentService(db).create_document(filename, content_type, data)
     return document
 
 
@@ -98,23 +116,34 @@ def retry_parse(document_id: str, db: Session = Depends(get_db)):
     return task_out(task)
 
 
-def latest_version(document_id: str, db: Session) -> DocumentVersion:
+def latest_version(document_id: str, db: Session, version: int | None = None) -> DocumentVersion:
     """获取最新成功版本；未解析完成时明确拒绝内容预览。"""
-    version = db.scalar(select(DocumentVersion).where(DocumentVersion.document_id == document_id).order_by(DocumentVersion.version.desc()))
-    if not version:
+    statement = select(DocumentVersion).where(DocumentVersion.document_id == document_id)
+    if version is not None:
+        statement = statement.where(DocumentVersion.version == version)
+    document_version = db.scalar(statement.order_by(DocumentVersion.version.desc()))
+    if not document_version:
         raise HTTPException(409, "Document has no parsed version")
-    return version
+    return document_version
+
+
+@router.get("/{document_id}/versions", response_model=list[DocumentVersionOut])
+def list_versions(document_id: str, db: Session = Depends(get_db)):
+    """按版本倒序列出成功解析历史，供人工比较和回溯。"""
+    if not db.get(Document, document_id):
+        raise HTTPException(404, "Document not found")
+    return list(db.scalars(select(DocumentVersion).where(DocumentVersion.document_id == document_id).order_by(DocumentVersion.version.desc())))
 
 
 @router.get("/{document_id}/content", response_model=DocumentModel)
-def content(document_id: str, db: Session = Depends(get_db)):
+def content(document_id: str, version: int | None = Query(default=None, ge=1), db: Session = Depends(get_db)):
     """返回后续检索链路唯一应消费的标准化 JSON。"""
-    version = latest_version(document_id, db)
-    return JSONResponse(content=__import__("json").loads(StorageService().get_bytes(version.json_path)))
+    document_version = latest_version(document_id, db, version)
+    return JSONResponse(content=__import__("json").loads(StorageService().get_bytes(document_version.json_path)))
 
 
 @router.get("/{document_id}/markdown", response_class=PlainTextResponse)
-def markdown(document_id: str, db: Session = Depends(get_db)):
+def markdown(document_id: str, version: int | None = Query(default=None, ge=1), db: Session = Depends(get_db)):
     """返回标准 Markdown，用于前端预览及人工质量检查。"""
-    version = latest_version(document_id, db)
-    return StorageService().get_bytes(version.markdown_path).decode("utf-8")
+    document_version = latest_version(document_id, db, version)
+    return StorageService().get_bytes(document_version.markdown_path).decode("utf-8")
