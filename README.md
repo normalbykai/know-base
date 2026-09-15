@@ -155,3 +155,15 @@ docker compose --profile gpu up --build
 这会启动 API、Worker、PostgreSQL、Redis、MinIO 和 MinerU profile。默认 DeepSeek 解析不要求启动这个 profile；首次构建 MinerU 时才会下载 GPU 基础镜像和模型，因此耗时及磁盘占用都会明显增加。
 
 两种解析器都通过统一 `Parser` 接口接入。切换解析器不会影响上传、异步任务、标准化、版本和预览流程。
+
+### 历史文档分块与关键词检索
+
+迁移到 `20260916_0006` 后，新解析版本会自动生成检索分块。已有解析版本需要执行一次幂等回填：
+
+```powershell
+cd knowledge-document-service
+.\.venv\Scripts\python.exe -m alembic upgrade head
+.\.venv\Scripts\python.exe -m app.workers.chunk_backfill
+```
+
+回填命令可重复执行，只处理尚无分块的版本。关键词检索接口为 `GET /api/v1/search`，必须提供 `knowledge_base_id` 与 `q`；默认只检索该知识库内状态为 `PARSED` 的文档最新版本。PostgreSQL 使用 `pg_trgm` GIN 索引支持中文子串检索和相似度排序。

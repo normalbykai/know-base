@@ -8,3 +8,5 @@ export type DocumentBlock = { id: string; type: string; page?: number; level?: n
 export type DocumentContent = { document_id: string; title: string; metadata: Record<string, unknown>; blocks: DocumentBlock[] }
 export type KnowledgeBase = { id: string; name: string; description?: string; created_at: string }
 export type Tag = { id: string; name: string; created_at: string }
+export type SearchResult = { chunk_id: string; document_id: string; filename: string; version: number; heading_path?: string; page_start?: number; page_end?: number; content: string; score: number }
+export type SearchResponse = { query: string; total: number; page: number; page_size: number; items: SearchResult[] }

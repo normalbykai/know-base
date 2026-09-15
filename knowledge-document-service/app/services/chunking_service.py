@@ -2,6 +2,11 @@ import math
 import re
 from dataclasses import dataclass
 
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.models.document import DocumentVersion
+from app.models.document_chunk import DocumentChunk
 from app.schemas.document import DocumentBlock, DocumentModel
 
 
@@ -60,6 +65,9 @@ class DocumentChunker:
                     flush()
                 pending.append((part, block.page))
         flush()
+        # 极少数空白解析结果仍写入标题占位块，使历史回填具备严格幂等性并便于质量排查。
+        if not drafts and model.title.strip():
+            drafts.append(ChunkDraft(model.title.strip(), None, None, None))
         return drafts
 
     def _split(self, content: str) -> list[str]:
@@ -90,3 +98,34 @@ class DocumentChunker:
     def token_estimate(content: str) -> int:
         """在尚未绑定具体 Embedding 模型前使用稳定的保守估算。"""
         return max(1, math.ceil(len(content) / 3))
+
+
+class DocumentChunkService:
+    """统一持久化分块，确保实时解析和历史回填使用完全相同的规则。"""
+
+    def __init__(self, db: Session, max_characters: int = 1200) -> None:
+        self.db = db
+        self.chunker = DocumentChunker(max_characters)
+
+    def version_has_chunks(self, document_version_id: str) -> bool:
+        """通过任意一个分块判断版本是否已处理，用于幂等回填。"""
+        return self.db.scalar(select(DocumentChunk.id).where(DocumentChunk.document_version_id == document_version_id).limit(1)) is not None
+
+    def add_version_chunks(self, version: DocumentVersion, model: DocumentModel) -> list[DocumentChunk]:
+        """生成版本内稳定序号并加入当前事务；提交由上层业务流程控制。"""
+        chunks = [
+            DocumentChunk(
+                document_id=version.document_id,
+                document_version_id=version.id,
+                chunk_index=index,
+                content=draft.content,
+                heading_path=draft.heading_path,
+                page_start=draft.page_start,
+                page_end=draft.page_end,
+                character_count=len(draft.content),
+                token_estimate=self.chunker.token_estimate(draft.content),
+            )
+            for index, draft in enumerate(self.chunker.chunk(model))
+        ]
+        self.db.add_all(chunks)
+        return chunks

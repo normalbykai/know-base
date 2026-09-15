@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.documents import router as documents_router
 from app.api.health import router as health_router
 from app.api.knowledge_bases import router as knowledge_bases_router
+from app.api.search import router as search_router
 from app.core.config import get_settings
 
 # API 只暴露业务契约；数据库建表由 Alembic migration 负责。
@@ -12,3 +13,4 @@ app.add_middleware(CORSMiddleware, allow_origins=get_settings().cors_origins, al
 app.include_router(health_router)
 app.include_router(documents_router)
 app.include_router(knowledge_bases_router)
+app.include_router(search_router)

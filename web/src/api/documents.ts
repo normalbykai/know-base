@@ -1,4 +1,4 @@
-import type { BatchOperation, Document, DocumentChunk, DocumentContent, DocumentPage, DocumentVersion, KnowledgeBase, ParseTask, Tag } from '../types/document'
+import type { BatchOperation, Document, DocumentChunk, DocumentContent, DocumentPage, DocumentVersion, KnowledgeBase, ParseTask, SearchResponse, Tag } from '../types/document'
 
 // 开发环境允许覆盖后端地址，生产环境由部署平台注入该变量。
 const API = import.meta.env.VITE_DOCUMENT_API ?? 'http://localhost:8000/api/v1'
@@ -33,6 +33,11 @@ export const listTags = () => request<Tag[]>('/tags')
 export const createTag = (name: string) => request<Tag>('/tags', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) })
 export const getDocumentTags = (id: string) => request<Tag[]>(`/documents/${id}/tags`)
 export const replaceDocumentTags = (id: string, tag_ids: string[]) => request<Tag[]>(`/documents/${id}/tags`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tag_ids }) })
+export const searchDocuments = (params: { knowledgeBaseId: string; query: string; page: number; pageSize: number; tagIds?: string[] }) => {
+  const query = new URLSearchParams({ knowledge_base_id: params.knowledgeBaseId, q: params.query, page: String(params.page), page_size: String(params.pageSize) })
+  params.tagIds?.forEach(tagId => query.append('tag_ids', tagId))
+  return request<SearchResponse>(`/search?${query}`)
+}
 // Markdown 为纯文本响应，因此不能复用默认 JSON 请求函数。
 export const listVersions = (id: string) => request<DocumentVersion[]>(`/documents/${id}/versions`)
 export const listChunks = (id: string, version?: number) => request<DocumentChunk[]>(`/documents/${id}/chunks${version ? `?version=${version}` : ''}`)

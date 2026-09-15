@@ -4,11 +4,10 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.models.document import Document, DocumentStatus, DocumentVersion
-from app.models.document_chunk import DocumentChunk
 from app.models.parse_task import ParseTask
 from app.core.config import get_settings
 from app.schemas.document import DocumentModel
-from app.services.chunking_service import DocumentChunker
+from app.services.chunking_service import DocumentChunkService
 from app.services.storage_service import StorageService
 
 
@@ -81,11 +80,7 @@ class DocumentService:
         self.db.add(document_version)
         self.db.flush()
         # 分块与版本元数据在同一事务提交，保证已解析版本一定具备可检索的稳定片段。
-        chunker = DocumentChunker(get_settings().document_chunk_max_characters)
-        self.db.add_all([
-            DocumentChunk(document_id=locked_document.id, document_version_id=document_version.id, chunk_index=index, content=draft.content, heading_path=draft.heading_path, page_start=draft.page_start, page_end=draft.page_end, character_count=len(draft.content), token_estimate=chunker.token_estimate(draft.content))
-            for index, draft in enumerate(chunker.chunk(document_model))
-        ])
+        DocumentChunkService(self.db, get_settings().document_chunk_max_characters).add_version_chunks(document_version, document_model)
         locked_document.status = locked_task.status = DocumentStatus.PARSED
         locked_task.finished_at = datetime.now(timezone.utc)
         locked_task.error_code = locked_task.error_message = None

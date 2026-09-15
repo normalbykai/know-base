@@ -8,7 +8,7 @@ const color = (status: string) => ({ PARSED: 'green', FAILED: 'red', PARSING: 'b
 const isProcessing = (status?: string) => status === 'QUEUED' || status === 'PARSING'
 const formatTime = (value?: string) => value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '—'
 
-export function DocumentsPage() {
+export function DocumentsPage({ embedded = false }: { embedded?: boolean }) {
   const [document, setDocument] = useState<Document>()
   const [task, setTask] = useState<ParseTask>()
   const [tasks, setTasks] = useState<ParseTask[]>([])
@@ -133,9 +133,8 @@ export function DocumentsPage() {
   const changePage = (pagination: TablePaginationConfig) => { void refreshDocuments(pagination.current ?? 1, pagination.pageSize ?? pageSize) }
   const status = task?.status ?? document?.status ?? 'UPLOADED'
 
-  return <Layout style={{ minHeight: '100vh', background: '#f5f7fa' }}><Layout.Content style={{ maxWidth: 1180, width: '100%', margin: '40px auto', padding: '0 20px' }}>
-    <Typography.Title level={2} style={{ marginBottom: 4 }}>知识库文档</Typography.Title>
-    <Typography.Paragraph type="secondary">支持批量上传、解析、失败重试、筛选和版本追溯。</Typography.Paragraph>
+  return <Layout style={{ minHeight: embedded ? 'auto' : '100vh', background: '#f5f7fa' }}><Layout.Content style={{ maxWidth: 1180, width: '100%', margin: embedded ? '0 auto' : '40px auto', padding: embedded ? 0 : '0 20px' }}>
+    {!embedded && <><Typography.Title level={2} style={{ marginBottom: 4 }}>知识库文档</Typography.Title><Typography.Paragraph type="secondary">支持批量上传、解析、失败重试、筛选和版本追溯。</Typography.Paragraph></>}
     <Card title="知识库与标签"><Space wrap><Input.Search placeholder="新知识库名称" style={{ width: 210 }} value={newKnowledgeBaseName} onChange={event => setNewKnowledgeBaseName(event.target.value)} onSearch={() => void addKnowledgeBase()} enterButton="创建知识库" /><Input.Search placeholder="新标签名称" style={{ width: 190 }} value={newTagName} onChange={event => setNewTagName(event.target.value)} onSearch={() => void addTag()} enterButton="创建标签" /></Space></Card>
     <Card title="上传文档" style={{ marginTop: 20 }}><Space wrap><Select allowClear placeholder="上传到知识库（可选）" style={{ width: 230 }} value={uploadKnowledgeBaseId} onChange={setUploadKnowledgeBaseId} options={knowledgeBases.map(item => ({ value: item.id, label: item.name }))} /><Upload multiple accept=".pdf,.png,.jpg,.jpeg,.webp" beforeUpload={action} showUploadList={false}><Button type="primary">选择文件并上传</Button></Upload></Space><Typography.Text type="secondary" style={{ marginLeft: 12 }}>支持 PDF、PNG、JPG/JPEG、WEBP，单文件不超过 50 MB。</Typography.Text></Card>
     <Card title="文档列表" style={{ marginTop: 20 }} extra={<Space><Input.Search allowClear placeholder="按文件名筛选" style={{ width: 180 }} value={keyword} onChange={event => setKeyword(event.target.value)} onSearch={() => void refreshDocuments(1)} /><Select allowClear placeholder="全部状态" style={{ width: 120 }} value={statusFilter} onChange={value => { setStatusFilter(value); window.setTimeout(() => void refreshDocuments(1), 0) }} options={['UPLOADED', 'QUEUED', 'PARSING', 'PARSED', 'FAILED'].map(value => ({ value, label: value }))} /><Select allowClear placeholder="全部知识库" style={{ width: 160 }} value={knowledgeBaseFilter} onChange={value => { setKnowledgeBaseFilter(value); window.setTimeout(() => void refreshDocuments(1), 0) }} options={knowledgeBases.map(item => ({ value: item.id, label: item.name }))} /></Space>}>
