@@ -28,16 +28,13 @@ services:
 
   document-api:
     build: ./knowledge-document-service
-    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
-    env_file: ./knowledge-document-service/.env.example
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 4444 --reload"
+    env_file: ./knowledge-document-service/.env
     environment:
       DATABASE_URL: postgresql+psycopg://knowledge:knowledge@postgres:5432/knowledge
       REDIS_URL: redis://redis:6379/0
       MINIO_ENDPOINT: minio:9000
       DOCUMENT_PARSER: ${DOCUMENT_PARSER:-deepseek_vision}
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
-      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
-      DEEPSEEK_VISION_MODEL: ${DEEPSEEK_VISION_MODEL:-deepseek-flash}
       # 保留本地 MinerU 备用解析服务；当前默认路由使用 DeepSeek Vision。
       MINERU_BASE_URL: http://mineru:8000
     ports: ["${API_PORT:-8000}:8000"]
@@ -50,15 +47,12 @@ services:
   document-worker:
     build: ./knowledge-document-service
     command: dramatiq app.workers.parse_worker
-    env_file: ./knowledge-document-service/.env.example
+    env_file: ./knowledge-document-service/.env
     environment:
       DATABASE_URL: postgresql+psycopg://knowledge:knowledge@postgres:5432/knowledge
       REDIS_URL: redis://redis:6379/0
       MINIO_ENDPOINT: minio:9000
       DOCUMENT_PARSER: ${DOCUMENT_PARSER:-deepseek_vision}
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
-      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
-      DEEPSEEK_VISION_MODEL: ${DEEPSEEK_VISION_MODEL:-deepseek-flash}
       MINERU_BASE_URL: http://mineru:8000
     volumes: [./knowledge-document-service:/app]
     depends_on:
@@ -71,7 +65,7 @@ services:
     build: ./knowledge-document-service
     command: python -m app.workers.task_recovery
     restart: unless-stopped
-    env_file: ./knowledge-document-service/.env.example
+    env_file: ./knowledge-document-service/.env
     environment:
       DATABASE_URL: postgresql+psycopg://knowledge:knowledge@postgres:5432/knowledge
       PARSE_TASK_TIMEOUT_SECONDS: ${PARSE_TASK_TIMEOUT_SECONDS:-5400}
