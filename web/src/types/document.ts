@@ -3,6 +3,7 @@ export type DocumentPage = { items: Document[]; total: number; page: number; pag
 export type BatchOperation = { processed_ids: string[]; skipped: Record<string, string> }
 export type ParseTask = { task_id: string; document_id: string; status: string; retry_count: number; error_code?: string; error_message?: string; parser?: string; started_at?: string; finished_at?: string; created_at?: string }
 export type DocumentVersion = { id: string; document_id: string; version: number; parser: string; parser_version?: string; created_at: string }
+export type DocumentChunk = { id: string; document_id: string; document_version_id: string; chunk_index: number; content: string; heading_path?: string; page_start?: number; page_end?: number; character_count: number; token_estimate: number }
 export type DocumentBlock = { id: string; type: string; page?: number; level?: number; text?: string; content?: string }
 export type DocumentContent = { document_id: string; title: string; metadata: Record<string, unknown>; blocks: DocumentBlock[] }
 export type KnowledgeBase = { id: string; name: string; description?: string; created_at: string }

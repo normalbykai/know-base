@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Alert, Button, Card, Descriptions, Empty, Input, Layout, Popconfirm, Select, Space, Spin, Table, Tabs, Tag, Timeline, Typography, Upload, message } from 'antd'
 import type { TablePaginationConfig, UploadProps } from 'antd'
-import { assignKnowledgeBase, batchDelete, batchParse, batchRetry, createKnowledgeBase, createTag, deleteDocument, getContent, getDocumentTags, getMarkdown, getParseStatus, getSourceUrl, listDocuments, listKnowledgeBases, listParseTasks, listTags, listVersions, parseDocument, replaceDocumentTags, retryParse, uploadDocument } from '../api/documents'
-import type { Document, DocumentContent, DocumentVersion, KnowledgeBase, ParseTask, Tag as DocumentTag } from '../types/document'
+import { assignKnowledgeBase, batchDelete, batchParse, batchRetry, createKnowledgeBase, createTag, deleteDocument, getContent, getDocumentTags, getMarkdown, getParseStatus, getSourceUrl, listChunks, listDocuments, listKnowledgeBases, listParseTasks, listTags, listVersions, parseDocument, replaceDocumentTags, retryParse, uploadDocument } from '../api/documents'
+import type { Document, DocumentChunk, DocumentContent, DocumentVersion, KnowledgeBase, ParseTask, Tag as DocumentTag } from '../types/document'
 
 const color = (status: string) => ({ PARSED: 'green', FAILED: 'red', PARSING: 'blue', QUEUED: 'gold', UPLOADED: 'default' }[status] ?? 'default')
 const isProcessing = (status?: string) => status === 'QUEUED' || status === 'PARSING'
@@ -15,6 +15,7 @@ export function DocumentsPage() {
   const [markdown, setMarkdown] = useState('')
   const [content, setContent] = useState<DocumentContent>()
   const [versions, setVersions] = useState<DocumentVersion[]>([])
+  const [chunks, setChunks] = useState<DocumentChunk[]>([])
   const [selectedVersion, setSelectedVersion] = useState<number>()
   const [documents, setDocuments] = useState<Document[]>([])
   const [total, setTotal] = useState(0)
@@ -45,8 +46,8 @@ export function DocumentsPage() {
     setDocument(item => item?.id === id ? { ...item, status } : item)
   }
   const loadParsedContent = async (id: string, version?: number) => {
-    const [nextMarkdown, nextContent] = await Promise.all([getMarkdown(id, version), getContent(id, version)])
-    setMarkdown(nextMarkdown); setContent(nextContent)
+    const [nextMarkdown, nextContent, nextChunks] = await Promise.all([getMarkdown(id, version), getContent(id, version), listChunks(id, version)])
+    setMarkdown(nextMarkdown); setContent(nextContent); setChunks(nextChunks)
   }
   const loadStatus = async (item: Document, silent = false) => {
     try {
@@ -64,7 +65,7 @@ export function DocumentsPage() {
     } catch (error) { if (!silent) message.error(`无法读取文档详情：${String(error)}`) }
   }
   const selectDocument = async (item: Document) => {
-    setDocument(item); setTask(undefined); setTasks([]); setDocumentTags([]); setMarkdown(''); setContent(undefined); setVersions([]); setSelectedVersion(undefined)
+    setDocument(item); setTask(undefined); setTasks([]); setDocumentTags([]); setMarkdown(''); setContent(undefined); setChunks([]); setVersions([]); setSelectedVersion(undefined)
     if (item.status === 'UPLOADED') return
     setLoadingDetail(true)
     try { await loadStatus(item) } finally { setLoadingDetail(false) }
@@ -162,6 +163,7 @@ export function DocumentsPage() {
           { key: 'source', label: '原始文件', children: <iframe title="原始文档预览" src={getSourceUrl(document.id)} style={{ width: '100%', height: 680, border: '1px solid #f0f0f0', borderRadius: 6 }} /> },
           { key: 'markdown', label: 'Markdown 预览', children: markdown ? <pre style={{ maxHeight: 680, overflow: 'auto', margin: 0, padding: 18, whiteSpace: 'pre-wrap', background: '#fafafa', borderRadius: 6 }}>{markdown}</pre> : <Empty description="正在加载 Markdown" /> },
           { key: 'structure', label: `结构化内容 (${content?.blocks.length ?? 0})`, children: content ? <pre style={{ maxHeight: 680, overflow: 'auto', margin: 0, padding: 18, background: '#fafafa', borderRadius: 6 }}>{JSON.stringify(content, null, 2)}</pre> : <Empty description="正在加载结构化内容" /> },
+          { key: 'chunks', label: `分块预览 (${chunks.length})`, children: chunks.length ? <Table size="small" rowKey="id" pagination={{ pageSize: 10 }} dataSource={chunks} columns={[{ title: '#', dataIndex: 'chunk_index', width: 60 }, { title: '标题上下文', dataIndex: 'heading_path', width: 190, render: (value?: string) => value ?? '—' }, { title: '页码', width: 80, render: (_, item: DocumentChunk) => item.page_start ? item.page_start === item.page_end ? item.page_start : `${item.page_start}-${item.page_end}` : '—' }, { title: '内容', dataIndex: 'content', ellipsis: true }, { title: '字符', dataIndex: 'character_count', width: 70 }]} /> : <Empty description="该版本暂无可检索分块" /> },
         ]} />}
       </Spin>}
     </Card>

@@ -4,8 +4,11 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.models.document import Document, DocumentStatus, DocumentVersion
+from app.models.document_chunk import DocumentChunk
 from app.models.parse_task import ParseTask
 from app.core.config import get_settings
+from app.schemas.document import DocumentModel
+from app.services.chunking_service import DocumentChunker
 from app.services.storage_service import StorageService
 
 
@@ -59,7 +62,7 @@ class DocumentService:
         self.db.delete(document)
         self.db.commit()
 
-    def save_result(self, document: Document, task: ParseTask, raw_json: bytes, markdown: bytes, normalized_json: bytes, parser: str, parser_version: str | None) -> None:
+    def save_result(self, document: Document, task: ParseTask, raw_json: bytes, markdown: bytes, normalized_json: bytes, document_model: DocumentModel, parser: str, parser_version: str | None) -> DocumentVersion:
         """保存三层产物并创建不可变版本；锁定任务避免覆盖超时恢复的状态。"""
         # 解析期间恢复器可能已将任务标记为超时。行锁确保两条终态路径只能有一方提交。
         locked_task = self.db.scalar(select(ParseTask).where(ParseTask.id == task.id).with_for_update().execution_options(populate_existing=True))
@@ -74,8 +77,17 @@ class DocumentService:
         self.storage.put_bytes(f"parsed/{locked_document.id}/v{version}/parser.md", markdown, "text/markdown")
         self.storage.put_bytes(markdown_path, markdown, "text/markdown")
         self.storage.put_bytes(json_path, normalized_json, "application/json")
-        self.db.add(DocumentVersion(document_id=locked_document.id, version=version, source_path=locked_document.storage_path, markdown_path=markdown_path, json_path=json_path, parser=parser, parser_version=parser_version))
+        document_version = DocumentVersion(document_id=locked_document.id, version=version, source_path=locked_document.storage_path, markdown_path=markdown_path, json_path=json_path, parser=parser, parser_version=parser_version)
+        self.db.add(document_version)
+        self.db.flush()
+        # 分块与版本元数据在同一事务提交，保证已解析版本一定具备可检索的稳定片段。
+        chunker = DocumentChunker(get_settings().document_chunk_max_characters)
+        self.db.add_all([
+            DocumentChunk(document_id=locked_document.id, document_version_id=document_version.id, chunk_index=index, content=draft.content, heading_path=draft.heading_path, page_start=draft.page_start, page_end=draft.page_end, character_count=len(draft.content), token_estimate=chunker.token_estimate(draft.content))
+            for index, draft in enumerate(chunker.chunk(document_model))
+        ])
         locked_document.status = locked_task.status = DocumentStatus.PARSED
         locked_task.finished_at = datetime.now(timezone.utc)
         locked_task.error_code = locked_task.error_message = None
         self.db.commit()
+        return document_version

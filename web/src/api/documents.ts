@@ -1,4 +1,4 @@
-import type { BatchOperation, Document, DocumentContent, DocumentPage, DocumentVersion, KnowledgeBase, ParseTask, Tag } from '../types/document'
+import type { BatchOperation, Document, DocumentChunk, DocumentContent, DocumentPage, DocumentVersion, KnowledgeBase, ParseTask, Tag } from '../types/document'
 
 // 开发环境允许覆盖后端地址，生产环境由部署平台注入该变量。
 const API = import.meta.env.VITE_DOCUMENT_API ?? 'http://localhost:8000/api/v1'
@@ -35,6 +35,7 @@ export const getDocumentTags = (id: string) => request<Tag[]>(`/documents/${id}/
 export const replaceDocumentTags = (id: string, tag_ids: string[]) => request<Tag[]>(`/documents/${id}/tags`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tag_ids }) })
 // Markdown 为纯文本响应，因此不能复用默认 JSON 请求函数。
 export const listVersions = (id: string) => request<DocumentVersion[]>(`/documents/${id}/versions`)
+export const listChunks = (id: string, version?: number) => request<DocumentChunk[]>(`/documents/${id}/chunks${version ? `?version=${version}` : ''}`)
 export const getMarkdown = async (id: string, version?: number) => { const query = version ? `?version=${version}` : ''; const response = await fetch(`${API}/documents/${id}/markdown${query}`); if (!response.ok) throw new Error(await response.text()); return response.text() }
 export const getContent = (id: string, version?: number) => request<DocumentContent>(`/documents/${id}/content${version ? `?version=${version}` : ''}`)
 // 原始文件走浏览器原生预览，避免把大文件重复读入前端内存。

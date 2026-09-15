@@ -63,7 +63,7 @@ def parse_document(task_id: str) -> None:
             parser = ParserRouter().resolve(document.content_type, document.filename, task.parser)
             parsed = parser.parse(document.filename, document.content_type, source)
             model = DocumentNormalizer().normalize(document.id, document.filename, document.content_type, parsed.raw_json, parsed.markdown)
-            service.save_result(document, task, json.dumps(parsed.raw_json, ensure_ascii=False).encode(), parsed.markdown.encode(), model.model_dump_json().encode(), parser.name, parsed.parser_version)
+            service.save_result(document, task, json.dumps(parsed.raw_json, ensure_ascii=False).encode(), parsed.markdown.encode(), model.model_dump_json().encode(), model, parser.name, parsed.parser_version)
         except TaskNoLongerActive:
             # 恢复器已提交超时终态；保留它的错误码和用户可读原因。
             return

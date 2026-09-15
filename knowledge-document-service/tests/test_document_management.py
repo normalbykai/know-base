@@ -4,7 +4,9 @@ from sqlalchemy.orm import Session
 
 from app.core.database import Base
 from app.models.document import Document, DocumentStatus, DocumentVersion
+from app.models.document_chunk import DocumentChunk
 from app.models.parse_task import ParseTask
+from app.schemas.document import DocumentBlock, DocumentModel
 from app.services.document_service import DocumentService
 
 
@@ -16,6 +18,9 @@ class FakeStorage:
 
     def delete_prefix(self, prefix: str) -> None:
         self.deleted_prefixes.append(prefix)
+
+    def put_bytes(self, path: str, data: bytes, content_type: str) -> None:
+        """保存调用痕迹即可；分块持久化测试不依赖实际对象存储。"""
 
 
 def make_session() -> Session:
@@ -52,3 +57,21 @@ def test_delete_document_rejects_active_parse_before_removing_objects() -> None:
 
     assert storage.deleted_prefixes == []
     assert db.get(Document, document.id) is not None
+
+
+def test_save_result_persists_chunks_with_its_immutable_version() -> None:
+    db = make_session()
+    document = Document(filename="chunk.pdf", content_type="application/pdf", file_size=3, storage_path="raw/chunk/original", status=DocumentStatus.PARSING)
+    db.add(document)
+    db.flush()
+    task = ParseTask(document_id=document.id, parser="deepseek_vision", status=DocumentStatus.PARSING)
+    db.add(task)
+    db.commit()
+    model = DocumentModel(document_id=document.id, title="分块", blocks=[DocumentBlock(id="b1", type="heading", level=1, text="规则", page=1), DocumentBlock(id="b2", type="paragraph", text="正文内容", page=1)])
+
+    version = DocumentService(db, storage=FakeStorage()).save_result(document, task, b"{}", "# 规则\n正文内容".encode(), model.model_dump_json().encode(), model, "deepseek_vision", "test")
+
+    chunks = db.query(DocumentChunk).filter(DocumentChunk.document_version_id == version.id).all()
+    assert len(chunks) == 1
+    assert chunks[0].heading_path == "规则"
+    assert chunks[0].content == "正文内容"

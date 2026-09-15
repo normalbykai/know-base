@@ -6,10 +6,11 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.models.document import Document, DocumentStatus, DocumentVersion
+from app.models.document_chunk import DocumentChunk
 from app.models.knowledge_base import KnowledgeBase
 from app.models.parse_task import ParseTask
 from app.schemas.knowledge_base import DocumentKnowledgeBaseUpdate, DocumentTagsUpdate, TagOut
-from app.schemas.document import BatchOperationOut, DocumentIdsRequest, DocumentListOut, DocumentModel, DocumentOut, DocumentVersionOut, ParseTaskOut
+from app.schemas.document import BatchOperationOut, DocumentChunkOut, DocumentIdsRequest, DocumentListOut, DocumentModel, DocumentOut, DocumentVersionOut, ParseTaskOut
 from app.services.document_service import DocumentService
 from app.services.knowledge_base_service import KnowledgeBaseService
 from app.services.storage_service import StorageService
@@ -268,6 +269,15 @@ def list_versions(document_id: str, db: Session = Depends(get_db)):
     if not db.get(Document, document_id):
         raise HTTPException(404, "Document not found")
     return list(db.scalars(select(DocumentVersion).where(DocumentVersion.document_id == document_id).order_by(DocumentVersion.version.desc())))
+
+
+@router.get("/{document_id}/chunks", response_model=list[DocumentChunkOut])
+def list_chunks(document_id: str, version: int | None = Query(default=None, ge=1), db: Session = Depends(get_db)):
+    """返回指定解析版本的稳定分块，用于人工验收和后续检索调试。"""
+    document_version = latest_version(document_id, db, version)
+    return list(db.scalars(
+        select(DocumentChunk).where(DocumentChunk.document_version_id == document_version.id).order_by(DocumentChunk.chunk_index)
+    ))
 
 
 @router.get("/{document_id}/content", response_model=DocumentModel)

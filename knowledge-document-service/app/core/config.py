@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     # 解析页数与外部服务响应时间差异很大，因此默认保守设置为 90 分钟。
     parse_task_timeout_seconds: int = Field(default=5400, ge=60, le=86_400)
     task_recovery_interval_seconds: int = Field(default=60, ge=10, le=3600)
+    document_chunk_max_characters: int = Field(default=1200, ge=200, le=8000)
 
 
 @lru_cache

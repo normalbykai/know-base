@@ -62,6 +62,22 @@ class DocumentVersionOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class DocumentChunkOut(BaseModel):
+    """供管理端检查分块边界、页码和标题上下文的只读契约。"""
+    id: str
+    document_id: str
+    document_version_id: str
+    chunk_index: int
+    content: str
+    heading_path: str | None = None
+    page_start: int | None = None
+    page_end: int | None = None
+    character_count: int
+    token_estimate: int
+
+    model_config = {"from_attributes": True}
+
+
 class DocumentBlock(BaseModel):
     """跨解析器的最小内容块；后续 Chunk 引擎只依赖此结构。"""
     id: str
