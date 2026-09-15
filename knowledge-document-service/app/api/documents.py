@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -6,9 +6,12 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.models.document import Document, DocumentStatus, DocumentVersion
+from app.models.knowledge_base import KnowledgeBase
 from app.models.parse_task import ParseTask
+from app.schemas.knowledge_base import DocumentKnowledgeBaseUpdate, DocumentTagsUpdate, TagOut
 from app.schemas.document import BatchOperationOut, DocumentIdsRequest, DocumentListOut, DocumentModel, DocumentOut, DocumentVersionOut, ParseTaskOut
 from app.services.document_service import DocumentService
+from app.services.knowledge_base_service import KnowledgeBaseService
 from app.services.storage_service import StorageService
 from app.workers.parse_worker import parse_document
 from urllib.parse import quote
@@ -37,7 +40,7 @@ def task_out(task) -> ParseTaskOut:
 
 
 @router.post("", response_model=DocumentOut, status_code=status.HTTP_201_CREATED)
-async def upload_document(file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def upload_document(file: UploadFile = File(...), knowledge_base_id: str | None = Form(default=None), db: Session = Depends(get_db)):
     """接收文件并立即创建文档；不在 HTTP 请求内执行耗时解析。"""
     filename = file.filename or "unnamed"
     content_type = file.content_type or "application/octet-stream"
@@ -47,7 +50,9 @@ async def upload_document(file: UploadFile = File(...), db: Session = Depends(ge
         raise HTTPException(400, "Empty files cannot be uploaded")
     if len(data) > get_settings().max_upload_bytes:
         raise HTTPException(413, "File exceeds MAX_UPLOAD_BYTES")
-    document = DocumentService(db).create_document(filename, content_type, data)
+    if knowledge_base_id and not db.get(KnowledgeBase, knowledge_base_id):
+        raise HTTPException(404, "目标知识库不存在")
+    document = DocumentService(db).create_document(filename, content_type, data, knowledge_base_id=knowledge_base_id)
     return document
 
 
@@ -57,6 +62,7 @@ def list_documents(
     page_size: int = Query(default=20, ge=1, le=100),
     keyword: str | None = Query(default=None, max_length=200),
     document_status: DocumentStatus | None = Query(default=None, alias="status"),
+    knowledge_base_id: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
     """按名称、状态筛选并分页返回文档，避免管理页在数据增长后全量加载。"""
@@ -67,6 +73,8 @@ def list_documents(
         statement, count_statement = statement.where(condition), count_statement.where(condition)
     if document_status:
         statement, count_statement = statement.where(Document.status == document_status), count_statement.where(Document.status == document_status)
+    if knowledge_base_id:
+        statement, count_statement = statement.where(Document.knowledge_base_id == knowledge_base_id), count_statement.where(Document.knowledge_base_id == knowledge_base_id)
     total = db.scalar(count_statement) or 0
     items = list(db.scalars(statement.order_by(Document.created_at.desc()).offset((page - 1) * page_size).limit(page_size)))
     return DocumentListOut(items=items, total=total, page=page, page_size=page_size)
@@ -136,6 +144,39 @@ def get_document(document_id: str, db: Session = Depends(get_db)):
     if not document:
         raise HTTPException(404, "Document not found")
     return document
+
+
+@router.put("/{document_id}/knowledge-base", response_model=DocumentOut)
+def assign_knowledge_base(document_id: str, payload: DocumentKnowledgeBaseUpdate, db: Session = Depends(get_db)):
+    """显式变更文档归属，未归档文档可传空值回到公共待整理区。"""
+    document = db.get(Document, document_id)
+    if not document:
+        raise HTTPException(404, "Document not found")
+    try:
+        KnowledgeBaseService(db).assign_document(document, payload.knowledge_base_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    return document
+
+
+@router.get("/{document_id}/tags", response_model=list[TagOut])
+def document_tags(document_id: str, db: Session = Depends(get_db)):
+    """读取文档当前标签，供管理端编辑与检索筛选使用。"""
+    if not db.get(Document, document_id):
+        raise HTTPException(404, "Document not found")
+    return KnowledgeBaseService(db).document_tags(document_id)
+
+
+@router.put("/{document_id}/tags", response_model=list[TagOut])
+def replace_document_tags(document_id: str, payload: DocumentTagsUpdate, db: Session = Depends(get_db)):
+    """整体替换文档标签；拒绝不存在标签保证关联数据完整。"""
+    document = db.get(Document, document_id)
+    if not document:
+        raise HTTPException(404, "Document not found")
+    try:
+        return KnowledgeBaseService(db).replace_document_tags(document, payload.tag_ids)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)

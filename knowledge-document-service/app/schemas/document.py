@@ -12,6 +12,7 @@ class DocumentOut(BaseModel):
     file_size: int
     status: str
     created_at: datetime
+    knowledge_base_id: str | None = None
 
     model_config = {"from_attributes": True}
 

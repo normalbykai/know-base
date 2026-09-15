@@ -6,6 +6,7 @@ from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text, Unique
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
+from app.models.knowledge_base import KnowledgeBase  # noqa: F401
 
 
 class DocumentStatus(str, enum.Enum):
@@ -22,7 +23,7 @@ class Document(Base):
     __tablename__ = "documents"
     __table_args__ = {"comment": "逻辑文档主表，记录用户上传文件及其当前处理状态。"}
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment="文档 UUID 主键。")
-    knowledge_base_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True, comment="所属知识库 UUID；第一阶段允许为空。")
+    knowledge_base_id: Mapped[str | None] = mapped_column(ForeignKey("knowledge_bases.id", ondelete="SET NULL"), nullable=True, index=True, comment="所属知识库 UUID 外键；未归档文档为空。")
     filename: Mapped[str] = mapped_column(String(512), comment="用户上传时的原始文件名，仅用于展示。")
     content_type: Mapped[str] = mapped_column(String(255), comment="上传文件的 MIME 内容类型。")
     file_size: Mapped[int] = mapped_column(Integer, comment="原始文件大小，单位为字节。")
